@@ -696,6 +696,8 @@ class RelatedNotesView extends ItemView {
 				cursor: pointer;
 				text-decoration: none !important;
 				color: var(--text-normal);
+				align-items: flex-start;
+				justify-content: space-between;
 			}
 			.related-note-item:hover {
 				background-color: var(--background-modifier-hover);
@@ -703,6 +705,7 @@ class RelatedNotesView extends ItemView {
 			.related-note-info {
 				flex: 1;
 				min-width: 0;
+				margin-right: 8px;
 			}
 			.related-note-title {
 				font-size: 13px;
@@ -735,6 +738,33 @@ class RelatedNotesView extends ItemView {
 				color: var(--text-muted);
 				font-size: 13px;
 				opacity: 0.6;
+			}
+			.related-note-buttons {
+				display: flex;
+				flex-direction: column;
+				gap: 4px;
+				opacity: 0.5;
+				transition: opacity 0.2s;
+			}
+			.related-note-item:hover .related-note-buttons {
+				opacity: 1;
+			}
+			.related-note-button {
+				background: none;
+				border: none;
+				padding: 4px;
+				cursor: pointer;
+				color: var(--text-muted);
+				border-radius: 2px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				width: 24px;
+				height: 24px;
+			}
+			.related-note-button:hover {
+				background-color: var(--background-modifier-hover);
+				color: var(--text-normal);
 			}
 		`;
 		document.head.appendChild(style);
@@ -826,9 +856,8 @@ class RelatedNotesView extends ItemView {
 			new Notice(`找到 ${relatedNotes.length} 个相关笔记`, 2000);
 			
 			for (const note of relatedNotes) {
-				const noteItem = notesContainer.createEl('a', {
-					cls: 'related-note-item',
-					href: '#'
+				const noteItem = notesContainer.createEl('div', {
+					cls: 'related-note-item'
 				});
 
 				const noteInfo = noteItem.createDiv('related-note-info');
@@ -841,9 +870,46 @@ class RelatedNotesView extends ItemView {
 				const similarityDiv = noteInfo.createDiv('related-note-similarity');
 				similarityDiv.setText(`相似度: ${(note.similarity * 100).toFixed(1)}%`);
 
-				noteItem.addEventListener('click', async (e) => {
-					e.preventDefault();
+				// 添加按钮容器
+				const buttonContainer = noteItem.createDiv('related-note-buttons');
+
+				// 添加打开按钮
+				const openButton = buttonContainer.createEl('button', {
+					cls: 'related-note-button open-button',
+					attr: {
+						'aria-label': '打开笔记'
+					}
+				});
+				openButton.innerHTML = `<svg viewBox="0 0 100 100" class="right-triangle" width="12" height="12"><path fill="currentColor" stroke="currentColor" d="M33.4,50 l33.3,-33.3 l33.3,33.3 l-33.3,33.3 Z"></path></svg>`;
+				openButton.addEventListener('click', async (e) => {
+					e.stopPropagation();
 					await this.openFile(note.file);
+				});
+
+				// 添加复制链接按钮
+				const copyButton = buttonContainer.createEl('button', {
+					cls: 'related-note-button copy-button',
+					attr: {
+						'aria-label': '复制双链'
+					}
+				});
+				copyButton.innerHTML = `<svg viewBox="0 0 100 100" class="link" width="12" height="12"><path fill="currentColor" stroke="currentColor" d="M43.1,54.9c-2.5,2.5-2.5,6.6,0,9.1l8.8,8.8c2.5,2.5,6.6,2.5,9.1,0l26.3-26.3c2.5-2.5,2.5-6.6,0-9.1l-8.8-8.8 c-2.5-2.5-6.6-2.5-9.1,0l-3.5,3.5 M56.9,45.1c2.5-2.5,2.5-6.6,0-9.1l-8.8-8.8c-2.5-2.5-6.6-2.5-9.1,0L12.7,53.5c-2.5,2.5-2.5,6.6,0,9.1 l8.8,8.8c2.5,2.5,6.6,2.5,9.1,0l3.5-3.5"></path></svg>`;
+				copyButton.addEventListener('click', (e) => {
+					e.stopPropagation();
+					// 复制双链到剪贴板
+					navigator.clipboard.writeText(`[[${note.file.basename}]]`).then(() => {
+						new Notice('已复制双链到剪贴板', 2000);
+					}).catch(err => {
+						console.error('复制失败:', err);
+						new Notice('复制失败', 2000);
+					});
+				});
+
+				// 添加点击整个卡片打开笔记的事件
+				noteItem.addEventListener('click', async (e) => {
+					if (e.target === noteItem || e.target === noteInfo || e.target === titleDiv || e.target === excerptDiv || e.target === similarityDiv) {
+						await this.openFile(note.file);
+					}
 				});
 			}
 		}
