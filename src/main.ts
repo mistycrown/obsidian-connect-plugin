@@ -18,6 +18,8 @@ interface MyPluginSettings {
 	// 重新索引设置
 	autoReindex: boolean;    // 是否启用自动重新索引
 	lastIndexTimeProperty: string; // 最后索引时间的属性名
+	// 相关笔记设置
+	similarityThreshold: number; // 相似度阈值
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
@@ -33,7 +35,8 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	excludeFiles: '',
 	keywordsProperty: 'keywords',
 	autoReindex: false,
-	lastIndexTimeProperty: 'lastIndexTime'
+	lastIndexTimeProperty: 'lastIndexTime',
+	similarityThreshold: 0.1 // 默认相似度阈值为 0.1 (10%)
 }
 
 const VIEW_TYPE_RELATED = 'related-notes-view';
@@ -773,8 +776,8 @@ class RelatedNotesView extends ItemView {
 			if (otherFile.path === file.path) continue;
 
 			const otherContent = await this.app.vault.read(otherFile);
-			const similarity = this.calculateSimilarity(content, otherContent);
-			if (similarity > 0.1) {
+			const similarity = this.calculateSimilarity(content, otherContent, file, otherFile);
+			if (similarity > this.plugin.settings.similarityThreshold) {
 				relatedNotes.push({
 					file: otherFile,
 					similarity: similarity,
@@ -820,15 +823,81 @@ class RelatedNotesView extends ItemView {
 		return content.trim().slice(0, 100) + '...';
 	}
 
-	private calculateSimilarity(text1: string, text2: string): number {
-		// 简单的相似度计算，可以根据需要改进
-		const words1 = new Set(text1.toLowerCase().split(/\s+/));
-		const words2 = new Set(text2.toLowerCase().split(/\s+/));
-		
-		const intersection = new Set([...words1].filter(x => words2.has(x)));
-		const union = new Set([...words1, ...words2]);
-		
-		return intersection.size / union.size;
+	private calculateSimilarity(text1: string, text2: string, file1: TFile, file2: TFile): number {
+		try {
+			// 获取文件的元数据
+			const metadata1 = this.app.metadataCache.getFileCache(file1)?.frontmatter;
+			const metadata2 = this.app.metadataCache.getFileCache(file2)?.frontmatter;
+
+			// 获取关键词（如果有）
+			const keywords1: string[] = metadata1?.[this.plugin.settings.keywordsProperty] || [];
+			const keywords2: string[] = metadata2?.[this.plugin.settings.keywordsProperty] || [];
+
+			console.log(`计算关键词相似度 - ${file1.basename} vs ${file2.basename}:`);
+			console.log(`  关键词1:`, keywords1);
+			console.log(`  关键词2:`, keywords2);
+
+			// 将关键词拆分成字符
+			const keywordsChars1 = new Set(keywords1.join('').split(''));
+			const keywordsChars2 = new Set(keywords2.join('').split(''));
+
+			// 计算关键词字符的相似度
+			const keywordsIntersection = new Set([...keywordsChars1].filter(x => keywordsChars2.has(x)));
+			const keywordsUnion = new Set([...keywordsChars1, ...keywordsChars2]);
+			const keywordsSimilarity = keywordsIntersection.size / keywordsUnion.size || 0;
+
+			console.log(`  关键词字符交集:`, [...keywordsIntersection]);
+			console.log(`  关键词字符并集:`, [...keywordsUnion]);
+			console.log(`  关键词相似度: ${(keywordsSimilarity * 100).toFixed(1)}%`);
+
+			// 获取标题（从文件名中提取）
+			const title1 = file1.basename;
+			const title2 = file2.basename;
+
+			// 将标题分词
+			const titleWords1 = new Set(this.tokenizeText(title1));
+			const titleWords2 = new Set(this.tokenizeText(title2));
+
+			// 计算标题的相似度
+			const titleIntersection = new Set([...titleWords1].filter(x => titleWords2.has(x)));
+			const titleUnion = new Set([...titleWords1, ...titleWords2]);
+			const titleSimilarity = titleIntersection.size / titleUnion.size;
+
+			// 加权计算总相似度
+			// 标题权重 0.5，关键词权重 0.5
+			const totalSimilarity = (
+				titleSimilarity * 0.5 +
+				keywordsSimilarity * 0.5
+			);
+
+			console.log(`相似度计算结果 - ${file1.basename} vs ${file2.basename}:`);
+			console.log(`  标题相似度: ${(titleSimilarity * 100).toFixed(1)}%`);
+			console.log(`  关键词相似度: ${(keywordsSimilarity * 100).toFixed(1)}%`);
+			console.log(`  总相似度: ${(totalSimilarity * 100).toFixed(1)}%`);
+
+			return totalSimilarity;
+		} catch (error) {
+			console.error('计算相似度时出错:', error);
+			return 0;
+		}
+	}
+
+	private tokenizeText(text: string): string[] {
+		// 移除标点符号和特殊字符
+		const cleanText = text.toLowerCase()
+			.replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, ' ')
+			.replace(/\s+/g, ' ')
+			.trim();
+
+		// 分词（简单按空格分割，可以根据需要使用更复杂的分词算法）
+		const words = cleanText.split(/\s+/);
+
+		// 对于中文，按字符分割
+		const chineseWords = cleanText.match(/[\u4e00-\u9fa5]+/g) || [];
+		const chineseChars = chineseWords.join('').split('');
+
+		// 合并英文词和中文字
+		return [...words, ...chineseChars];
 	}
 }
 
@@ -984,6 +1053,29 @@ class RelatedNotesSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.autoReindex = value;
 					await this.plugin.saveSettings();
+				}));
+
+		// 相关笔记设置
+		containerEl.createEl('h2', {text: '相关笔记设置'});
+
+		new Setting(containerEl)
+			.setName('相似度阈值')
+			.setDesc('只显示相似度高于此阈值的笔记（范围：0-1，例如：0.1 表示 10%）')
+			.addSlider(slider => slider
+				.setLimits(0, 1, 0.05)
+				.setValue(this.plugin.settings.similarityThreshold)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.similarityThreshold = value;
+					await this.plugin.saveSettings();
+				}))
+			.addExtraButton(button => button
+				.setIcon('reset')
+				.setTooltip('重置为默认值 (10%)')
+				.onClick(async () => {
+					this.plugin.settings.similarityThreshold = 0.1;
+					await this.plugin.saveSettings();
+					this.display();
 				}));
 
 		// 手动重新索引按钮
