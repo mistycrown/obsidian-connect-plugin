@@ -657,22 +657,113 @@ class RelatedNotesView extends ItemView {
 		return '相关笔记';
 	}
 
+	getIcon(): string {
+		return 'files';
+	}
+
 	async onOpen() {
 		const container = this.containerEl.children[1];
 		container.empty();
+		container.addClass('related-notes-container');
+
+		// 添加样式
+		const style = document.createElement('style');
+		style.textContent = `
+			.related-notes-container {
+				padding: 0;
+				background-color: var(--background-primary);
+				height: 100%;
+				display: flex;
+				flex-direction: column;
+				overflow: hidden;
+			}
+			.related-notes-header {
+				display: flex;
+				align-items: center;
+				padding: 8px 12px;
+				border-bottom: 1px solid var(--background-modifier-border);
+				min-height: 28px;
+			}
+			.related-notes-header-text {
+				font-size: 13px;
+				font-weight: 500;
+				color: var(--text-muted);
+			}
+			.related-notes-content {
+				padding: 4px;
+				overflow-y: auto;
+				flex: 1 1 auto;
+				height: 0;
+			}
+			.related-note-item {
+				display: flex;
+				padding: 8px;
+				margin-bottom: 4px;
+				border-radius: 4px;
+				transition: background-color 0.2s;
+				cursor: pointer;
+				text-decoration: none !important;
+				color: var(--text-normal);
+			}
+			.related-note-item:hover {
+				background-color: var(--background-modifier-hover);
+			}
+			.related-note-info {
+				flex: 1;
+				min-width: 0;
+			}
+			.related-note-title {
+				font-size: 13px;
+				font-weight: 400;
+				margin-bottom: 2px;
+				color: var(--text-normal);
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.related-note-excerpt {
+				font-size: 12px;
+				color: var(--text-muted);
+				margin-bottom: 2px;
+				display: -webkit-box;
+				-webkit-line-clamp: 2;
+				-webkit-box-orient: vertical;
+				overflow: hidden;
+				opacity: 0.8;
+			}
+			.related-note-similarity {
+				font-size: 11px;
+				color: var(--text-faint);
+			}
+			.related-notes-empty {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				height: 100px;
+				color: var(--text-muted);
+				font-size: 13px;
+				opacity: 0.6;
+			}
+		`;
+		document.head.appendChild(style);
 
 		this.content = container.createDiv('related-notes-content');
 		const activeFile = this.app.workspace.getActiveFile();
 		if (activeFile) {
 			await this.updateForFile(activeFile);
 		} else {
-			this.content.setText('请打开一个笔记');
+			const emptyDiv = this.content.createDiv('related-notes-empty');
+			emptyDiv.setText('请打开一个笔记');
 		}
 	}
 
 	async updateForFile(file: TFile) {
 		this.content.empty();
-		this.content.createEl('h3', { text: `与 ${file.basename} 相关的笔记` });
+
+		// 创建头部
+		const header = this.content.createDiv('related-notes-header');
+		const headerText = header.createDiv('related-notes-header-text');
+		headerText.setText(file.basename);
 
 		const content = await this.app.vault.read(file);
 		const allFiles = this.app.vault.getMarkdownFiles();
@@ -683,10 +774,11 @@ class RelatedNotesView extends ItemView {
 
 			const otherContent = await this.app.vault.read(otherFile);
 			const similarity = this.calculateSimilarity(content, otherContent);
-			if (similarity > 0.1) {  // 相似度阈值
+			if (similarity > 0.1) {
 				relatedNotes.push({
 					file: otherFile,
-					similarity: similarity
+					similarity: similarity,
+					excerpt: this.getExcerpt(otherContent)
 				});
 			}
 		}
@@ -695,18 +787,37 @@ class RelatedNotesView extends ItemView {
 		relatedNotes.sort((a, b) => b.similarity - a.similarity);
 
 		// 显示相关笔记
-		const list = this.content.createEl('ul');
-		for (const note of relatedNotes.slice(0, 10)) {  // 只显示前10个
-			const item = list.createEl('li');
-			const link = item.createEl('a', {
-				text: `${note.file.basename} (${(note.similarity * 100).toFixed(1)}%)`,
+		const notesContainer = this.content.createDiv('related-notes-list');
+		for (const note of relatedNotes.slice(0, 10)) {
+			const noteItem = notesContainer.createEl('a', {
+				cls: 'related-note-item',
 				href: '#'
 			});
-			link.addEventListener('click', async (e) => {
+
+			const noteInfo = noteItem.createDiv('related-note-info');
+			const titleDiv = noteInfo.createDiv('related-note-title');
+			titleDiv.setText(note.file.basename);
+			
+			const excerptDiv = noteInfo.createDiv('related-note-excerpt');
+			excerptDiv.setText(note.excerpt);
+			
+			const similarityDiv = noteInfo.createDiv('related-note-similarity');
+			similarityDiv.setText(`相似度: ${(note.similarity * 100).toFixed(0)}%`);
+
+			noteItem.addEventListener('click', async (e) => {
 				e.preventDefault();
 				await this.app.workspace.getLeaf().openFile(note.file);
 			});
 		}
+	}
+
+	private getExcerpt(content: string): string {
+		// 移除 frontmatter
+		content = content.replace(/^---\n[\s\S]*?\n---\n/, '');
+		// 移除 Markdown 语法
+		content = content.replace(/[#*`\[\]]/g, '');
+		// 获取前 100 个字符
+		return content.trim().slice(0, 100) + '...';
 	}
 
 	private calculateSimilarity(text1: string, text2: string): number {
