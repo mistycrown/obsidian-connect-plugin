@@ -183,86 +183,111 @@ export default class MyPlugin extends Plugin {
 
 	// 为单个笔记生成关键词
 	async indexNote(file: TFile) {
-		try {
-			const content = await this.app.vault.read(file);
-			const cleanedContent = this.cleanNoteContent(content);
-			const keywords = await this.api.getKeywords(cleanedContent, file.basename);
-			
-			if (keywords && keywords.length > 0) {
-				console.log(`[索引] 笔记 ${file.basename} 获取到 ${keywords.length} 个关键词，准备更新...`);
-				
-				const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter || {};
-				metadata[this.settings.keywordsProperty] = keywords;
-				
-				// 记录索引时间
-				const indexTime = Date.now();
-				metadata[this.settings.lastIndexTimeProperty] = indexTime;
-				console.log(`[索引] 设置索引时间戳: ${new Date(indexTime).toLocaleString()}`);
+		const MAX_RETRIES = 3;
+		let retryCount = 0;
 
-				// 构建新的 frontmatter
-				const newFrontMatter = `---\n${Object.entries(metadata)
-					.map(([key, value]) => {
-						if (Array.isArray(value)) {
-							return `${key}:\n${value.map(item => `  - ${item}`).join('\n')}`;
-						} else if (typeof value === 'number') {
-							return `${key}: ${value}`;
-						}
-						return `${key}: ${JSON.stringify(value)}`;
-					})
-					.join('\n')}
+		while (retryCount < MAX_RETRIES) {
+			try {
+				const content = await this.app.vault.read(file);
+				const cleanedContent = this.cleanNoteContent(content);
+				const keywords = await this.api.getKeywords(cleanedContent, file.basename);
+				
+				if (keywords && Array.isArray(keywords) && keywords.length >= 2) {
+					console.log(`[索引] 笔记 ${file.basename} 获取到 ${keywords.length} 个关键词，准备更新...`);
+					
+					const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter || {};
+					metadata[this.settings.keywordsProperty] = keywords;
+					
+					// 记录索引时间
+					const indexTime = Date.now();
+					metadata[this.settings.lastIndexTimeProperty] = indexTime;
+					console.log(`[索引] 设置索引时间戳: ${new Date(indexTime).toLocaleString()}`);
+
+					// 构建新的 frontmatter
+					const newFrontMatter = `---\n${Object.entries(metadata)
+						.map(([key, value]) => {
+							if (Array.isArray(value)) {
+								return `${key}:\n${value.map(item => `  - ${item}`).join('\n')}`;
+							} else if (typeof value === 'number') {
+								return `${key}: ${value}`;
+							}
+							return `${key}: ${JSON.stringify(value)}`;
+						})
+						.join('\n')}
 ---\n`;
 
-				// 如果文件已有 frontmatter，替换它；否则在文件开头添加
-				const hasFrontMatter = content.startsWith('---\n');
-				let newContent;
-				if (hasFrontMatter) {
-					const endOfFrontMatter = content.indexOf('---\n', 4) + 4;
-					newContent = newFrontMatter + content.slice(endOfFrontMatter);
-				} else {
-					newContent = newFrontMatter + content;
-				}
+					// 如果文件已有 frontmatter，替换它；否则在文件开头添加
+					const hasFrontMatter = content.startsWith('---\n');
+					let newContent;
+					if (hasFrontMatter) {
+						const endOfFrontMatter = content.indexOf('---\n', 4) + 4;
+						newContent = newFrontMatter + content.slice(endOfFrontMatter);
+					} else {
+						newContent = newFrontMatter + content;
+					}
 
-				// 修改文件
-				await this.app.vault.modify(file, newContent);
-				console.log(`[索引] 文件内容已更新，等待元数据缓存刷新...`);
+					// 修改文件
+					await this.app.vault.modify(file, newContent);
+					console.log(`[索引] 文件内容已更新，等待元数据缓存刷新...`);
 
-				// 等待元数据缓存更新
-				await new Promise<void>((resolve) => {
-					const handler = this.app.metadataCache.on('changed', (changedFile) => {
-						if (changedFile.path === file.path) {
+					// 等待元数据缓存更新
+					await new Promise<void>((resolve) => {
+						const handler = this.app.metadataCache.on('changed', (changedFile) => {
+							if (changedFile.path === file.path) {
+								this.app.metadataCache.offref(handler);
+								resolve();
+							}
+						});
+
+						// 设置超时，防止无限等待
+						setTimeout(() => {
 							this.app.metadataCache.offref(handler);
 							resolve();
-						}
+						}, 2000);
 					});
 
-					// 设置超时，防止无限等待
-					setTimeout(() => {
-						this.app.metadataCache.offref(handler);
-						resolve();
-					}, 2000);
-				});
+					// 验证时间戳更新
+					const updatedMetadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
+					const updatedTimestamp = updatedMetadata?.[this.settings.lastIndexTimeProperty];
+					
+					if (updatedTimestamp === indexTime) {
+						console.log(`[索引] 时间戳更新成功: ${new Date(updatedTimestamp).toLocaleString()}`);
+					} else {
+						console.log(`[索引] 时间戳更新可能失败：`);
+						console.log(`  预期时间戳: ${new Date(indexTime).toLocaleString()}`);
+						console.log(`  实际时间戳: ${updatedTimestamp ? new Date(updatedTimestamp).toLocaleString() : '未找到'}`);
+					}
 
-				// 验证时间戳更新
-				const updatedMetadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
-				const updatedTimestamp = updatedMetadata?.[this.settings.lastIndexTimeProperty];
-				
-				if (updatedTimestamp === indexTime) {
-					console.log(`[索引] 时间戳更新成功: ${new Date(updatedTimestamp).toLocaleString()}`);
+					return true;
 				} else {
-					console.log(`[索引] 时间戳更新可能失败：`);
-					console.log(`  预期时间戳: ${new Date(indexTime).toLocaleString()}`);
-					console.log(`  实际时间戳: ${updatedTimestamp ? new Date(updatedTimestamp).toLocaleString() : '未找到'}`);
+					retryCount++;
+					if (retryCount < MAX_RETRIES) {
+						new Notice(`笔记 ${file.basename} 未获取到有效关键词，正在重试 (${retryCount}/${MAX_RETRIES})...`);
+						console.log(`[索引] 笔记 ${file.basename} 未获取到有效关键词，正在重试 (${retryCount}/${MAX_RETRIES})...`);
+						// 等待一秒后重试
+						await new Promise(resolve => setTimeout(resolve, 1000));
+					} else {
+						new Notice(`笔记 ${file.basename} 无法获取有效关键词，已重试 ${MAX_RETRIES} 次`);
+						console.log(`[索引] 笔记 ${file.basename} 无法获取有效关键词，已重试 ${MAX_RETRIES} 次`);
+						return false;
+					}
 				}
-
-				return true;
-			} else {
-				console.log(`[索引] 笔记 ${file.basename} 未获取到关键词`);
-				return false;
+			} catch (error) {
+				retryCount++;
+				if (retryCount < MAX_RETRIES) {
+					new Notice(`笔记 ${file.basename} 索引出错，正在重试 (${retryCount}/${MAX_RETRIES})...`);
+					console.error(`[索引] 处理笔记 ${file.path} 时出错，正在重试 (${retryCount}/${MAX_RETRIES}):`, error);
+					// 等待一秒后重试
+					await new Promise(resolve => setTimeout(resolve, 1000));
+				} else {
+					new Notice(`笔记 ${file.basename} 索引失败，已重试 ${MAX_RETRIES} 次`);
+					console.error(`[索引] 处理笔记 ${file.path} 时出错，已重试 ${MAX_RETRIES} 次:`, error);
+					throw error;
+				}
 			}
-		} catch (error) {
-			console.error(`[索引] 处理笔记 ${file.path} 时出错:`, error);
-			throw error;
 		}
+
+		return false;
 	}
 
 	// 为所有符合条件的笔记生成关键词
