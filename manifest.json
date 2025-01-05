@@ -1,0 +1,9 @@
+{
+	"id": "connect-plugin",
+	"name": "connect-plugin",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "connect-plugin",
+	"author": "lumos-momo",
+	"isDesktopOnly": false
+}
