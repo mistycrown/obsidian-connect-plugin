@@ -264,12 +264,11 @@ export default class MyPlugin extends Plugin {
 				} else {
 					retryCount++;
 					if (retryCount < MAX_RETRIES) {
-						new Notice(`笔记 ${file.basename} 未获取到有效关键词，正在重试 (${retryCount}/${MAX_RETRIES})...`);
+						new Notice(`笔记 ${file.basename} 未获取到有效关键词，正在重试 (${retryCount}/${MAX_RETRIES})...`, 3000);
 						console.log(`[索引] 笔记 ${file.basename} 未获取到有效关键词，正在重试 (${retryCount}/${MAX_RETRIES})...`);
-						// 等待一秒后重试
 						await new Promise(resolve => setTimeout(resolve, 1000));
 					} else {
-						new Notice(`笔记 ${file.basename} 无法获取有效关键词，已重试 ${MAX_RETRIES} 次`);
+						new Notice(`笔记 ${file.basename} 无法获取有效关键词`, 4000);
 						console.log(`[索引] 笔记 ${file.basename} 无法获取有效关键词，已重试 ${MAX_RETRIES} 次`);
 						return false;
 					}
@@ -277,12 +276,11 @@ export default class MyPlugin extends Plugin {
 			} catch (error) {
 				retryCount++;
 				if (retryCount < MAX_RETRIES) {
-					new Notice(`笔记 ${file.basename} 索引出错，正在重试 (${retryCount}/${MAX_RETRIES})...`);
+					new Notice(`笔记 ${file.basename} 索引出错，正在重试 (${retryCount}/${MAX_RETRIES})...`, 3000);
 					console.error(`[索引] 处理笔记 ${file.path} 时出错，正在重试 (${retryCount}/${MAX_RETRIES}):`, error);
-					// 等待一秒后重试
 					await new Promise(resolve => setTimeout(resolve, 1000));
 				} else {
-					new Notice(`笔记 ${file.basename} 索引失败，已重试 ${MAX_RETRIES} 次`);
+					new Notice(`笔记 ${file.basename} 索引失败`, 4000);
 					console.error(`[索引] 处理笔记 ${file.path} 时出错，已重试 ${MAX_RETRIES} 次:`, error);
 					throw error;
 				}
@@ -300,7 +298,7 @@ export default class MyPlugin extends Plugin {
 		let successCount = 0;
 		let errorCount = 0;
 
-		new Notice(`开始索引所有笔记，共 ${totalFiles} 个文件...`);
+		new Notice(`开始索引所有笔记，共 ${totalFiles} 个文件...`, 3000);
 
 		for (const file of files) {
 			try {
@@ -311,17 +309,19 @@ export default class MyPlugin extends Plugin {
 					continue;
 				}
 
-				new Notice(`正在索引：${file.basename} (${processedFiles}/${totalFiles})`);
+				// 每处理10个文件显示一次进度
+				if (processedFiles % 10 === 0) {
+					new Notice(`正在索引：${processedFiles}/${totalFiles}`, 2000);
+				}
 				await this.indexNote(file);
 				successCount++;
-				new Notice(`完成索引：${file.basename} (${processedFiles}/${totalFiles})`);
 			} catch (error) {
 				console.error(`索引笔记 ${file.path} 失败:`, error);
 				errorCount++;
 			}
 		}
 
-		new Notice(`索引完成！成功: ${successCount}, 失败: ${errorCount}, 跳过: ${totalFiles - successCount - errorCount}`);
+		new Notice(`索引完成！成功: ${successCount}, 失败: ${errorCount}, 跳过: ${totalFiles - successCount - errorCount}`, 5000);
 	}
 
 	// 更新笔记的frontmatter
@@ -403,7 +403,7 @@ export default class MyPlugin extends Plugin {
 		let processedFiles = 0;
 		let modifiedCount = 0;
 
-		new Notice(`开始删除所有笔记的关键词索引，共 ${totalFiles} 个文件...`);
+		new Notice(`开始删除所有笔记的关键词索引，共 ${totalFiles} 个文件...`, 3000);
 
 		for (const file of files) {
 			try {
@@ -440,8 +440,9 @@ export default class MyPlugin extends Plugin {
 					await this.app.vault.modify(file, newContent);
 					modifiedCount++;
 					
-					if (processedFiles % 5 === 0 || processedFiles === totalFiles) {
-						new Notice(`正在处理：${processedFiles}/${totalFiles}`);
+					// 每处理5个文件显示一次进度
+					if (processedFiles % 5 === 0) {
+						new Notice(`正在处理：${processedFiles}/${totalFiles}`, 2000);
 					}
 				}
 			} catch (error) {
@@ -449,7 +450,7 @@ export default class MyPlugin extends Plugin {
 			}
 		}
 
-		new Notice(`删除完成！已从 ${modifiedCount} 个笔记中移除关键词索引`);
+		new Notice(`删除完成！已从 ${modifiedCount} 个笔记中移除关键词索引`, 5000);
 	}
 
 	// 检查笔记是否需要重新索引
@@ -524,7 +525,7 @@ export default class MyPlugin extends Plugin {
 		let skippedCount = 0;
 		let errorCount = 0;
 
-		new Notice(`开始检查已修改的笔记，共 ${totalFiles} 个文件...`);
+		new Notice(`开始检查已修改的笔记，共 ${totalFiles} 个文件...`, 3000);
 
 		for (const file of files) {
 			try {
@@ -532,7 +533,10 @@ export default class MyPlugin extends Plugin {
 				const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
 				
 				if (this.shouldReindexNote(file, metadata)) {
-					new Notice(`正在重新索引：${file.basename} (${processedFiles}/${totalFiles})`);
+					// 每处理10个文件显示一次进度
+					if (processedFiles % 10 === 0) {
+						new Notice(`正在处理：${processedFiles}/${totalFiles}`, 2000);
+					}
 					await this.indexNote(file);
 					reindexedCount++;
 					console.log(`成功重新索引笔记: ${file.path}`);
@@ -545,7 +549,7 @@ export default class MyPlugin extends Plugin {
 			}
 		}
 
-		new Notice(`重新索引完成！已更新: ${reindexedCount}, 失败: ${errorCount}, 跳过: ${skippedCount}`);
+		new Notice(`更新完成！已更新: ${reindexedCount}, 失败: ${errorCount}, 跳过: ${skippedCount}`, 5000);
 	}
 
 	// 检查并重新索引需要更新的笔记
@@ -793,7 +797,7 @@ class RelatedNotesView extends ItemView {
 		const relatedNotes = [];
 
 		// 显示处理进度
-		new Notice(`正在计算相关笔记，请稍候...`);
+		new Notice(`正在计算相关笔记...`, 2000);
 
 		for (const otherFile of allFiles) {
 			if (otherFile.path === file.path) continue;
@@ -819,7 +823,7 @@ class RelatedNotesView extends ItemView {
 			const emptyDiv = notesContainer.createDiv('related-notes-empty');
 			emptyDiv.setText('未找到相关笔记');
 		} else {
-			new Notice(`找到 ${relatedNotes.length} 个相关笔记`);
+			new Notice(`找到 ${relatedNotes.length} 个相关笔记`, 2000);
 			
 			for (const note of relatedNotes) {
 				const noteItem = notesContainer.createEl('a', {
