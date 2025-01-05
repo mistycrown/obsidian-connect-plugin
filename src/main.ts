@@ -7,18 +7,9 @@ interface MyPluginSettings {
 	apiSecret: string;
 	appId: string;
 	domain: string;
-	autoIndex: boolean;
-	indexExistingNotes: boolean;
-	reindexExisting: boolean;
 	excludeFolders: string;
-	// 索引设置
-	includeFiles: string;    // 包含的文件（glob 模式）
-	excludeFiles: string;    // 排除的文件（glob 模式）
 	keywordsProperty: string; // 关键词属性名
-	// 重新索引设置
-	autoReindex: boolean;    // 是否启用自动重新索引
 	lastIndexTimeProperty: string; // 最后索引时间的属性名
-	// 相关笔记设置
 	similarityThreshold: number; // 相似度阈值
 }
 
@@ -27,14 +18,8 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	apiSecret: '',
 	appId: '',
 	domain: 'generalv3',
-	autoIndex: false,
-	indexExistingNotes: true,
-	reindexExisting: false,
 	excludeFolders: '',
-	includeFiles: '**/*.md',
-	excludeFiles: '',
 	keywordsProperty: 'keywords',
-	autoReindex: false,
 	lastIndexTimeProperty: 'lastIndexTime',
 	similarityThreshold: 0.1 // 默认相似度阈值为 0.1 (10%)
 }
@@ -55,14 +40,6 @@ export default class MyPlugin extends Plugin {
 			appId: this.settings.appId,
 			domain: this.settings.domain
 		});
-
-		// 如果启用了自动重新索引，在插件加载时检查一次
-		if (this.settings.autoReindex) {
-			// 延迟执行，等待 Obsidian 完全加载
-			setTimeout(() => {
-				this.checkAndReindexNotes();
-			}, 5000);
-		}
 
 		// 注册视图类型
 		this.registerView(
@@ -114,10 +91,10 @@ export default class MyPlugin extends Plugin {
 			})
 		);
 
-		// 添加重新索引命令
+		// 添加更新索引命令
 		this.addCommand({
-			id: 'reindex-modified-notes',
-			name: '重新索引已修改的笔记',
+			id: 'update-notes-index',
+			name: '更新笔记索引',
 			callback: async () => {
 				await this.reindexModifiedNotes();
 			}
@@ -349,23 +326,12 @@ export default class MyPlugin extends Plugin {
 	}
 
 	async shouldIndexNote(file: TFile): Promise<boolean> {
-		// 检查文件是否符合索引条件
-		if (!this.settings.autoIndex && !this.settings.indexExistingNotes) {
-			return false;
-		}
-
 		// 检查文件是否在排除目录中
 		if (this.settings.excludeFolders) {
 			const excludeFolders = this.settings.excludeFolders.split(',').map(f => f.trim());
 			if (excludeFolders.some(folder => file.path.startsWith(folder))) {
 				return false;
 			}
-		}
-
-		// 检查是否已有关键词
-		const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
-		if (metadata && metadata.keywords && !this.settings.reindexExisting) {
-			return false;
 		}
 
 		return true;
@@ -461,18 +427,12 @@ export default class MyPlugin extends Plugin {
 
 	// 检查笔记是否需要重新索引
 	private shouldReindexNote(file: TFile, metadata: any): boolean {
-		// 检查文件是否符合包含/排除规则
-		if (this.settings.excludeFiles) {
-			const excludePatterns = this.settings.excludeFiles.split(',').map(p => p.trim());
-			for (const pattern of excludePatterns) {
-				if (this.matchGlobPattern(file.path, pattern)) {
-					return false;
-				}
+		// 检查文件是否在排除目录中
+		if (this.settings.excludeFolders) {
+			const excludeFolders = this.settings.excludeFolders.split(',').map(f => f.trim());
+			if (excludeFolders.some(folder => file.path.startsWith(folder))) {
+				return false;
 			}
-		}
-
-		if (this.settings.includeFiles && !this.matchGlobPattern(file.path, this.settings.includeFiles)) {
-			return false;
 		}
 
 		// 获取最后索引时间
@@ -563,8 +523,6 @@ export default class MyPlugin extends Plugin {
 
 	// 检查并重新索引需要更新的笔记
 	private async checkAndReindexNotes() {
-		if (!this.settings.autoReindex) return;
-
 		const files = this.app.vault.getMarkdownFiles();
 		const totalFiles = files.length;
 		let processedFiles = 0;
@@ -969,24 +927,13 @@ class RelatedNotesSettingTab extends PluginSettingTab {
 		containerEl.createEl('h2', {text: '索引设置'});
 
 		new Setting(containerEl)
-			.setName('包含文件')
-			.setDesc('指定要索引的文件（使用 glob 模式，如 "**/*.md"）')
+			.setName('排除文件夹')
+			.setDesc('不索引这些文件夹中的笔记（用逗号分隔多个文件夹）')
 			.addText(text => text
-				.setPlaceholder('**/*.md')
-				.setValue(this.plugin.settings.includeFiles)
+				.setPlaceholder('folder1,folder2')
+				.setValue(this.plugin.settings.excludeFolders)
 				.onChange(async (value) => {
-					this.plugin.settings.includeFiles = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('排除文件')
-			.setDesc('指定要排除的文件（使用 glob 模式，如 "private/**/*.md"）')
-			.addText(text => text
-				.setPlaceholder('private/**/*.md')
-				.setValue(this.plugin.settings.excludeFiles)
-				.onChange(async (value) => {
-					this.plugin.settings.excludeFiles = value;
+					this.plugin.settings.excludeFolders = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -1001,101 +948,41 @@ class RelatedNotesSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		new Setting(containerEl)
-			.setName('自动索引')
-			.setDesc('创建新笔记时自动生成关键词')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.autoIndex)
-				.onChange(async (value) => {
-					this.plugin.settings.autoIndex = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('索引现有笔记')
-			.setDesc('允许索引已存在的笔记')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.indexExistingNotes)
-				.onChange(async (value) => {
-					this.plugin.settings.indexExistingNotes = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('重新索引')
-			.setDesc('允许重新索引已有关键词的笔记')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.reindexExisting)
-				.onChange(async (value) => {
-					this.plugin.settings.reindexExisting = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('排除文件夹')
-			.setDesc('不索引这些文件夹中的笔记（用逗号分隔多个文件夹）')
-			.addText(text => text
-				.setPlaceholder('folder1,folder2')
-				.setValue(this.plugin.settings.excludeFolders)
-				.onChange(async (value) => {
-					this.plugin.settings.excludeFolders = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// 重新索引设置
-		containerEl.createEl('h2', {text: '重新索引设置'});
-
-		new Setting(containerEl)
-			.setName('启用自动重新索引')
-			.setDesc('在插件加载时检查并重新索引已修改的笔记')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.autoReindex)
-				.onChange(async (value) => {
-					this.plugin.settings.autoReindex = value;
-					await this.plugin.saveSettings();
-				}));
-
 		// 相关笔记设置
 		containerEl.createEl('h2', {text: '相关笔记设置'});
 
 		new Setting(containerEl)
 			.setName('相似度阈值')
 			.setDesc('只显示相似度高于此阈值的笔记（范围：0-1，例如：0.1 表示 10%）')
-			.addSlider(slider => slider
-				.setLimits(0, 1, 0.05)
-				.setValue(this.plugin.settings.similarityThreshold)
-				.setDynamicTooltip()
+			.addText(text => text
+				.setPlaceholder('0.1')
+				.setValue(this.plugin.settings.similarityThreshold.toString())
 				.onChange(async (value) => {
-					this.plugin.settings.similarityThreshold = value;
-					await this.plugin.saveSettings();
-				}))
-			.addExtraButton(button => button
-				.setIcon('reset')
-				.setTooltip('重置为默认值 (10%)')
-				.onClick(async () => {
-					this.plugin.settings.similarityThreshold = 0.1;
-					await this.plugin.saveSettings();
-					this.display();
-				}));
-
-		// 手动重新索引按钮
-		new Setting(containerEl)
-			.setName('重新索引已修改的笔记')
-			.setDesc('检查并重新索引所有已修改的笔记')
-			.addButton(button => button
-				.setButtonText('开始重新索引')
-				.onClick(async () => {
-					await this.plugin.reindexModifiedNotes();
+					const numValue = parseFloat(value);
+					if (!isNaN(numValue) && numValue >= 0 && numValue <= 1) {
+						this.plugin.settings.similarityThreshold = numValue;
+						await this.plugin.saveSettings();
+					}
 				}));
 
 		// 手动索引按钮
 		new Setting(containerEl)
 			.setName('手动索引')
-			.setDesc('为所有符合条件的笔记生成关键词索引')
+			.setDesc('为所有笔记生成关键词索引')
 			.addButton(button => button
 				.setButtonText('开始索引')
 				.onClick(async () => {
 					await this.plugin.indexAllNotes();
+				}));
+
+		// 更新索引按钮
+		new Setting(containerEl)
+			.setName('更新索引')
+			.setDesc('更新已修改笔记的关键词索引')
+			.addButton(button => button
+				.setButtonText('更新索引')
+				.onClick(async () => {
+					await this.plugin.reindexModifiedNotes();
 				}));
 
 		// 删除索引按钮
