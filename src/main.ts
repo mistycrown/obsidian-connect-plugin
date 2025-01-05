@@ -11,6 +11,7 @@ interface MyPluginSettings {
 	keywordsProperty: string; // 关键词属性名
 	lastIndexTimeProperty: string; // 最后索引时间的属性名
 	similarityThreshold: number; // 相似度阈值
+	openMode: 'current' | 'new' | 'split'; // 笔记打开方式
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
@@ -21,7 +22,8 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	excludeFolders: '',
 	keywordsProperty: 'keywords',
 	lastIndexTimeProperty: 'lastIndexTime',
-	similarityThreshold: 0.1 // 默认相似度阈值为 0.1 (10%)
+	similarityThreshold: 0.1, // 默认相似度阈值为 0.1 (10%)
+	openMode: 'current' // 默认在当前窗口打开
 }
 
 const VIEW_TYPE_RELATED = 'related-notes-view';
@@ -743,6 +745,41 @@ class RelatedNotesView extends ItemView {
 		}
 	}
 
+	private async openFile(file: TFile) {
+		const { workspace } = this.app;
+		
+		switch (this.plugin.settings.openMode) {
+			case 'new':
+				// 在新标签页中打开
+				const leaf = workspace.getLeaf('tab');
+				await leaf.openFile(file);
+				break;
+			
+			case 'split':
+				// 在分割视图中打开
+				const existingLeaf = workspace.getLeavesOfType('markdown').find(leaf => 
+					(leaf.view as MarkdownView).file?.path === file.path
+				);
+
+				if (existingLeaf) {
+					// 如果文件已经打开，激活对应的叶子
+					workspace.setActiveLeaf(existingLeaf);
+				} else {
+					// 创建新的分割视图
+					const newLeaf = workspace.splitActiveLeaf();
+					await newLeaf.openFile(file);
+				}
+				break;
+			
+			case 'current':
+			default:
+				// 在当前窗口打开
+				const activeLeaf = workspace.getLeaf();
+				await activeLeaf.openFile(file);
+				break;
+		}
+	}
+
 	async updateForFile(file: TFile) {
 		this.content.empty();
 
@@ -802,7 +839,7 @@ class RelatedNotesView extends ItemView {
 
 				noteItem.addEventListener('click', async (e) => {
 					e.preventDefault();
-					await this.app.workspace.getLeaf().openFile(note.file);
+					await this.openFile(note.file);
 				});
 			}
 		}
@@ -999,6 +1036,19 @@ class RelatedNotesSettingTab extends PluginSettingTab {
 						this.plugin.settings.similarityThreshold = numValue;
 						await this.plugin.saveSettings();
 					}
+				}));
+
+		new Setting(containerEl)
+			.setName('笔记打开方式')
+			.setDesc('选择点击相关笔记时的打开方式')
+			.addDropdown(dropdown => dropdown
+				.addOption('current', '在当前标签页打开')
+				.addOption('new', '在新标签页打开')
+				.addOption('split', '在分割视图中打开')
+				.setValue(this.plugin.settings.openMode)
+				.onChange(async (value: 'current' | 'new' | 'split') => {
+					this.plugin.settings.openMode = value;
+					await this.plugin.saveSettings();
 				}));
 
 		// 手动索引按钮
