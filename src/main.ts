@@ -755,6 +755,9 @@ class RelatedNotesView extends ItemView {
 		const allFiles = this.app.vault.getMarkdownFiles();
 		const relatedNotes = [];
 
+		// 显示处理进度
+		new Notice(`正在计算相关笔记，请稍候...`);
+
 		for (const otherFile of allFiles) {
 			if (otherFile.path === file.path) continue;
 
@@ -769,31 +772,39 @@ class RelatedNotesView extends ItemView {
 			}
 		}
 
-		// 按相似度排序
+		// 按相似度从高到低排序
 		relatedNotes.sort((a, b) => b.similarity - a.similarity);
 
 		// 显示相关笔记
 		const notesContainer = this.content.createDiv('related-notes-list');
-		for (const note of relatedNotes.slice(0, 10)) {
-			const noteItem = notesContainer.createEl('a', {
-				cls: 'related-note-item',
-				href: '#'
-			});
-
-			const noteInfo = noteItem.createDiv('related-note-info');
-			const titleDiv = noteInfo.createDiv('related-note-title');
-			titleDiv.setText(note.file.basename);
+		
+		if (relatedNotes.length === 0) {
+			const emptyDiv = notesContainer.createDiv('related-notes-empty');
+			emptyDiv.setText('未找到相关笔记');
+		} else {
+			new Notice(`找到 ${relatedNotes.length} 个相关笔记`);
 			
-			const excerptDiv = noteInfo.createDiv('related-note-excerpt');
-			excerptDiv.setText(note.excerpt);
-			
-			const similarityDiv = noteInfo.createDiv('related-note-similarity');
-			similarityDiv.setText(`相似度: ${(note.similarity * 100).toFixed(0)}%`);
+			for (const note of relatedNotes) {
+				const noteItem = notesContainer.createEl('a', {
+					cls: 'related-note-item',
+					href: '#'
+				});
 
-			noteItem.addEventListener('click', async (e) => {
-				e.preventDefault();
-				await this.app.workspace.getLeaf().openFile(note.file);
-			});
+				const noteInfo = noteItem.createDiv('related-note-info');
+				const titleDiv = noteInfo.createDiv('related-note-title');
+				titleDiv.setText(note.file.basename);
+				
+				const excerptDiv = noteInfo.createDiv('related-note-excerpt');
+				excerptDiv.setText(note.excerpt);
+				
+				const similarityDiv = noteInfo.createDiv('related-note-similarity');
+				similarityDiv.setText(`相似度: ${(note.similarity * 100).toFixed(1)}%`);
+
+				noteItem.addEventListener('click', async (e) => {
+					e.preventDefault();
+					await this.app.workspace.getLeaf().openFile(note.file);
+				});
+			}
 		}
 	}
 
