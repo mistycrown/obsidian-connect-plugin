@@ -1,94 +1,82 @@
-# Obsidian Sample Plugin
+# Obsidian 智能关联插件
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+这是一个基于讯飞星火大模型的 Obsidian 插件，可以自动为笔记生成关键词并找到相关笔记。
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## 主要功能
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open Sample Modal" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+1. **智能关键词生成**
+   - 自动分析笔记内容，生成关键词
+   - 支持批量处理所有笔记
+   - 支持自动更新已修改笔记的关键词
+   - 关键词存储在笔记的 frontmatter 中
 
-## First time developing plugins?
+2. **相关笔记推荐**
+   - 基于标题和关键词相似度智能匹配相关笔记
+   - 实时显示相关笔记列表
+   - 支持自定义相似度阈值
+   - 显示笔记预览和相似度百分比
 
-Quick starting guide for new plugin devs:
+3. **便捷操作**
+   - 支持多种笔记打开方式（当前标签页/新标签页/分割视图）
+   - 一键复制笔记双链
+   - 快速打开相关笔记
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+## 安装方法
 
-## Releasing new releases
+1. 下载 `main.js`、`manifest.json` 和 `styles.css` 文件
+2. 将这些文件复制到你的 Obsidian 插件目录：`VaultFolder/.obsidian/plugins/obsidian-connect-plugin/`
+3. 在 Obsidian 设置中启用插件
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+## 使用方法
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+### 初始配置
+1. 在插件设置中配置讯飞星火 API：
+   - 填写 API Key
+   - 填写 API Secret
+   - 填写 App ID
+   - 选择合适的模型版本
 
-## Adding your plugin to the community plugin list
+2. 配置索引设置：
+   - 设置要排除的文件夹（可选）
+   - 设置关键词属性名（默认为 "keywords"）
+   - 设置相似度阈值（0-1 之间，如 0.1 表示 10%）
+   - 选择笔记打开方式
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+### 生成关键词
+1. 单个笔记：
+   - 打开笔记，使用命令面板执行"为当前笔记生成关键词索引"
 
-## How to use
+2. 批量处理：
+   - 在设置面板中点击"开始索引"按钮
+   - 或使用命令面板执行"为所有笔记生成关键词索引"
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+3. 更新已修改笔记：
+   - 在设置面板中点击"更新索引"按钮
+   - 或使用命令面板执行"更新笔记索引"
 
-## Manually installing the plugin
+### 查看相关笔记
+1. 使用命令面板执行"显示相关笔记"命令
+2. 在右侧面板中查看相关笔记列表
+3. 点击笔记卡片或使用按钮打开笔记
+4. 使用复制按钮快速复制笔记双链
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+## 注意事项
 
-## Improve code quality with eslint (optional)
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- To use eslint with this project, make sure to install eslint from terminal:
-  - `npm install -g eslint`
-- To use eslint to analyze this project use this command:
-  - `eslint main.ts`
-  - eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder:
-  - `eslint .\src\`
+1. 首次使用需要配置讯飞星火 API 信息
+2. 建议先在小范围测试后再进行全库索引
+3. 关键词会存储在笔记的 frontmatter 中，请确保不要手动修改
+4. 相似度阈值越高，匹配的笔记会越少但相关性更强
+5. 关键词生成需要消耗讯飞星火 API 的 token，请确保有足够的 token 余额
+## 开发相关
 
-## Funding URL
+- 本插件使用 TypeScript 开发
+- 依赖讯飞星火大模型 API
+- 遵循 Obsidian 插件开发规范
 
-You can include funding URLs where people who use your plugin can financially support it.
+## 问题反馈
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+如果你在使用过程中遇到任何问题，或有任何建议，欢迎提出 Issue。
 
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
-```
+## 许可证
 
-If you have multiple URLs, you can also do:
-
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
-```
-
-## API Documentation
-
-See https://github.com/obsidianmd/obsidian-api
+MIT License
