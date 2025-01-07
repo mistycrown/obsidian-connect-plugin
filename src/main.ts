@@ -864,6 +864,30 @@ class RelatedNotesView extends ItemView {
 				const titleDiv = noteInfo.createDiv('related-note-title');
 				titleDiv.setText(note.file.basename);
 				
+				// 添加关键词标签容器
+				const keywordsContainer = noteInfo.createDiv('related-note-keywords');
+				keywordsContainer.style.display = 'flex';
+				keywordsContainer.style.flexWrap = 'wrap';
+				keywordsContainer.style.gap = '4px';
+				keywordsContainer.style.maxHeight = '60px';
+				keywordsContainer.style.overflowY = 'auto';
+				keywordsContainer.style.marginBottom = '4px';
+				
+				// 获取并显示关键词
+				const metadata = this.app.metadataCache.getFileCache(note.file)?.frontmatter;
+				const keywords = metadata?.[this.plugin.settings.keywordsProperty] || [];
+				keywords.forEach((keyword: string) => {
+					const tag = keywordsContainer.createEl('span', {
+						cls: 'keyword-tag'
+					});
+					tag.textContent = keyword;
+					tag.style.padding = '2px 6px';
+					tag.style.backgroundColor = 'var(--background-secondary)';
+					tag.style.borderRadius = '4px';
+					tag.style.fontSize = '12px';
+					tag.style.color = 'var(--text-muted)';
+				});
+				
 				const excerptDiv = noteInfo.createDiv('related-note-excerpt');
 				excerptDiv.setText(note.excerpt);
 				
